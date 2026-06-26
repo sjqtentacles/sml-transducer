@@ -87,10 +87,53 @@ struct
                  (12, transduce (mapcat (fn x => [x,x])) add 0 [1,2,3])
 
       val () = section "xreduce (low-level status-aware fold)"
-      val () = checkInt "xreduce no stop sums" (6, xreduce (fn acc => fn a => More (acc + a)) 0 [1,2,3])
+      val () = checkInt "xreduce no stop sums" (6, xreduce (reducer (fn acc => fn a => More (acc + a))) 0 [1,2,3])
       val () = checkInt "xreduce Stop short-circuits"
-                 (6, xreduce (fn acc => fn a => if a > 3 then Stop acc else More (acc + a)) 0 [1,2,3,4,5])
-      val () = checkInt "xreduce empty" (0, xreduce (fn acc => fn a => More (acc + a)) 0 [])
+                 (6, xreduce (reducer (fn acc => fn a => if a > 3 then Stop acc else More (acc + a))) 0 [1,2,3,4,5])
+      val () = checkInt "xreduce empty" (0, xreduce (reducer (fn acc => fn a => More (acc + a))) 0 [])
+
+      (* ------------------- new stages ------------------- *)
+      val () = section "mapIndexed / keep / keepIndexed"
+      val () = checkIntList "mapIndexed adds index"
+                 ([10,21,32], into (mapIndexed (fn i => fn x => x + i*10)) [10,11,12])
+      val () = checkIntList "keep filters via option"
+                 ([2,4], into (keep (fn x => if isEven x then SOME x else NONE)) (upto 5))
+      val () = checkIntList "keepIndexed uses index"
+                 ([0,2,4], into (keepIndexed (fn i => fn _ => if isEven i then SOME i else NONE)) (upto 6))
+
+      val () = section "takeNth / dropWhile / interpose"
+      val () = checkIntList "takeNth 2 (every other)" ([1,3,5], into (takeNth 2) (upto 6))
+      val () = checkIntList "takeNth 3" ([1,4], into (takeNth 3) (upto 6))
+      val () = checkIntList "dropWhile (<4)" ([4,5,1,2], into (dropWhile (fn n => n < 4)) [1,2,3,4,5,1,2])
+      val () = checkIntList "dropWhile none drop" ([1,2,3], into (dropWhile (fn n => n > 100)) [1,2,3])
+      val () = checkIntList "interpose 0" ([1,0,2,0,3], into (interpose 0) [1,2,3])
+      val () = checkIntList "interpose single" ([7], into (interpose 0) [7])
+      val () = checkIntList "interpose empty" ([], into (interpose 0) ([] : int list))
+
+      val () = section "distinct (all later dups)"
+      val () = checkIntList "distinct keeps first occurrence"
+                 ([1,2,3,4], into (distinct (op =)) [1,2,1,3,2,4,1])
+      val () = checkIntList "distinct no dups" ([1,2,3], into (distinct (op =)) [1,2,3])
+      val () = checkIntList "distinct empty" ([], into (distinct (op =)) ([] : int list))
+
+      val () = section "partitionAll (flush hook emits trailing partial)"
+      val () = check "partitionAll 2 of [1..5]"
+                 (into (partitionAll 2) (upto 5) = [[1,2],[3,4],[5]])
+      val () = check "partitionAll 3 exact"
+                 (into (partitionAll 3) (upto 6) = [[1,2,3],[4,5,6]])
+      val () = check "partitionAll over []"
+                 (into (partitionAll 2) ([] : int list) = ([] : int list list))
+      val () = check "partitionAll n>length yields one group"
+                 (into (partitionAll 10) (upto 3) = [[1,2,3]])
+
+      val () = section "intoString / intoArray runners"
+      val () = checkString "intoString concats"
+                 ("A-B-C", intoString (interpose "-") ["A","B","C"])
+      val () = checkString "intoString maps then concats"
+                 ("123", intoString (map Int.toString) [1,2,3])
+      val arr = intoArray (map inc) [1,2,3]
+      val () = checkIntList "intoArray contents" ([2,3,4], Vector.foldr (op ::) [] arr)
+      val () = checkInt "intoArray length" (3, Vector.length arr)
     in
       Harness.run ()
     end
